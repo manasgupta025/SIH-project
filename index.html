@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THERMOSENTINEL · Industrial Fire &amp; Thermal Source Monitor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B1220;
+    --panel: #101A2E;
+    --panel-border: #1E2C47;
+    --text-primary: #E8ECF4;
+    --text-dim: #7C8AA8;
+    --critical: #FF6B35;
+    --high: #FFA53F;
+    --medium: #E0C341;
+    --low: #3FC6E0;
+    --ignore: #4A5772;
+    --grid-line: #16213A;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(16, 26, 46, 0.85);
+    backdrop-filter: blur(6px);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--critical);
+    box-shadow: 0 0 12px var(--critical);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .brand h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .brand h1 span { color: var(--critical); }
+
+  .brand .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  .status-bar {
+    display: flex;
+    gap: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .status-bar .live {
+    color: var(--critical);
+    font-weight: 700;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    height: calc(100vh - 66px);
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--panel-border);
+    padding: 20px;
+    overflow-y: auto;
+    background: rgba(16, 26, 46, 0.5);
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+
+  .stat-card .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .stat-card .label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-top: 4px;
+  }
+
+  .section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin: 20px 0 10px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .legend-item.disabled { opacity: 0.35; }
+
+  .legend-swatch {
+    width: 12px; height: 12px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-count {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .hotspot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .hotspot-row {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--ignore);
+    border-radius: 4px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .hotspot-row:hover { background: #14213B; }
+
+  .hotspot-row .id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .hotspot-row .cls {
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  .hotspot-row .meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  #map {
+    height: 100%;
+    width: 100%;
+    background: var(--bg);
+  }
+
+  .leaflet-popup-content-wrapper {
+    background: var(--panel);
+    color: var(--text-primary);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+  }
+  .leaflet-popup-tip { background: var(--panel); }
+  .leaflet-popup-content { margin: 14px 16px; font-size: 13px; }
+  .popup-title { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .popup-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; color: var(--text-dim); }
+  .popup-row b { color: var(--text-primary); font-weight: 500; }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <h1>THERMO<span>SENTINEL</span></h1>
+      <div class="subtitle">AI Classification of Industrial Fires &amp; Thermal Sources · NASA FIRMS + OSM</div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span>SIH26162 · TEAM HACKCODE</span>
+    <span class="live">● LIVE FEED</span>
+    <span id="last-updated">SYNCING...</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="value" id="stat-total">–</div>
+        <div class="label">Total Hotspots</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-critical" style="color:var(--critical)">–</div>
+        <div class="label">Critical (Wildfire)</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-industrial" style="color:var(--high)">–</div>
+        <div class="label">Industrial Fires</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-persistent" style="color:var(--low)">–</div>
+        <div class="label">Persistent Sources</div>
+      </div>
+    </div>
+
+    <div class="section-title">Classification Layers</div>
+    <div id="legend"></div>
+
+    <div class="section-title">Priority Queue</div>
+    <div class="hotspot-list" id="hotspot-list"></div>
+  </aside>
+
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const CLASS_COLORS = {
+  WILDFIRE: "#FF6B35",
+  INDUSTRIAL_FIRE: "#FFA53F",
+  AGRI_BURNING: "#E0C341",
+  PERSISTENT_THERMAL: "#3FC6E0",
+  FALSE_ALARM: "#4A5772",
+};
+
+const CLASS_LABELS = {
+  WILDFIRE: "Wildfire",
+  INDUSTRIAL_FIRE: "Industrial Fire",
+  AGRI_BURNING: "Agricultural Burning",
+  PERSISTENT_THERMAL: "Persistent Thermal Source",
+  FALSE_ALARM: "False Alarm",
+};
+
+const map = L.map('map', { zoomControl: false }).setView([22.5, 79.0], 5);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+let allMarkers = [];
+let activeFilters = new Set(Object.keys(CLASS_COLORS));
+
+function frpToRadius(frp) {
+  return Math.max(6, Math.min(22, Math.sqrt(frp) * 1.8));
+}
+
+function renderLegend(counts) {
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  Object.keys(CLASS_COLORS).forEach(cls => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `
+      <div class="legend-swatch" style="background:${CLASS_COLORS[cls]}"></div>
+      <span>${CLASS_LABELS[cls]}</span>
+      <span class="legend-count">${counts[cls] || 0}</span>
+    `;
+    item.onclick = () => {
+      if (activeFilters.has(cls)) {
+        activeFilters.delete(cls);
+        item.classList.add('disabled');
+      } else {
+        activeFilters.add(cls);
+        item.classList.remove('disabled');
+      }
+      applyFilters();
+    };
+    legend.appendChild(item);
+  });
+}
+
+function applyFilters() {
+  allMarkers.forEach(({ marker, cls }) => {
+    if (activeFilters.has(cls)) {
+      if (!map.hasLayer(marker)) marker.addTo(map);
+    } else {
+      map.removeLayer(marker);
+    }
+  });
+}
+
+function renderList(data) {
+  const list = document.getElementById('hotspot-list');
+  list.innerHTML = '';
+  const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, IGNORE: 4 };
+  const sorted = [...data].sort((a, b) => (priorityOrder[a.risk_priority] ?? 9) - (priorityOrder[b.risk_priority] ?? 9));
+
+  sorted.slice(0, 30).forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hotspot-row';
+    row.style.borderLeftColor = CLASS_COLORS[h.predicted_class] || '#4A5772';
+    row.innerHTML = `
+      <div class="id">${h.id} · ${h.acq_date} ${h.acq_time}</div>
+      <div class="cls" style="color:${CLASS_COLORS[h.predicted_class]}">${CLASS_LABELS[h.predicted_class]}</div>
+      <div class="meta">FRP ${h.frp} MW · Persist ${h.persistence_days}d · ${h.risk_priority}</div>
+    `;
+    row.onclick = () => {
+      map.setView([h.latitude, h.longitude], 9);
+      const found = allMarkers.find(m => m.id === h.id);
+      if (found) found.marker.openPopup();
+    };
+    list.appendChild(row);
+  });
+}
+
+async function loadData() {
+  const res = await fetch('/api/hotspots');
+  const data = await res.json();
+
+  const statsRes = await fetch('/api/stats');
+  const stats = await statsRes.json();
+
+  document.getElementById('stat-total').textContent = stats.total;
+  document.getElementById('stat-critical').textContent = stats.by_class.WILDFIRE || 0;
+  document.getElementById('stat-industrial').textContent = stats.by_class.INDUSTRIAL_FIRE || 0;
+  document.getElementById('stat-persistent').textContent = stats.by_class.PERSISTENT_THERMAL || 0;
+
+  renderLegend(stats.by_class);
+
+  allMarkers.forEach(({ marker }) => map.removeLayer(marker));
+  allMarkers = [];
+
+  data.forEach(h => {
+    const color = CLASS_COLORS[h.predicted_class] || '#4A5772';
+    const marker = L.circleMarker([h.latitude, h.longitude], {
+      radius: frpToRadius(h.frp),
+      fillColor: color,
+      color: color,
+      weight: 1,
+      opacity: 0.8,
+      fillOpacity: 0.35,
+    });
+
+    marker.bindPopup(`
+      <div class="popup-title" style="color:${color}">${CLASS_LABELS[h.predicted_class]}</div>
+      <div class="popup-row"><span>ID</span><b>${h.id}</b></div>
+      <div class="popup-row"><span>FRP</span><b>${h.frp} MW</b></div>
+      <div class="popup-row"><span>Brightness</span><b>${h.brightness} K</b></div>
+      <div class="popup-row"><span>Confidence</span><b>${h.confidence}</b></div>
+      <div class="popup-row"><span>Persistence</span><b>${h.persistence_days} days</b></div>
+      <div class="popup-row"><span>Near Industrial</span><b>${h.near_industrial ? 'Yes' : 'No'}</b></div>
+      <div class="popup-row"><span>Near Forest</span><b>${h.near_forest ? 'Yes' : 'No'}</b></div>
+      <div class="popup-row"><span>Satellite</span><b>${h.satellite}</b></div>
+      <div class="popup-row"><span>Model Confidence</span><b>${(h.confidence_score * 100).toFixed(1)}%</b></div>
+    `);
+
+    marker.addTo(map);
+    allMarkers.push({ marker, cls: h.predicted_class, id: h.id });
+  });
+
+  renderList(data);
+
+  document.getElementById('last-updated').textContent =
+    'UPDATED ' + new Date().toLocaleTimeString('en-IN', { hour12: false });
+}
+
+loadData();
+setInterval(loadData, 60000);
+</script>
+
+</body>
+</html>
